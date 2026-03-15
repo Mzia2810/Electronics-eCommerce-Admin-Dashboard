@@ -7,8 +7,6 @@ on:
 
 env:
   ACR_LOGIN_SERVER: electronicsecommerce.azurecr.io
-  FRONTEND_IMAGE: frontend
-  BACKEND_IMAGE: backend
 
 jobs:
   deploy:
@@ -16,13 +14,19 @@ jobs:
 
     steps:
 
+    # Checkout repo
     - name: Checkout repository
       uses: actions/checkout@v3
 
 
-    # -----------------------------
+    # Show files (debug step)
+    - name: Show repo structure
+      run: |
+        pwd
+        ls -la
+
+
     # Login to Azure Container Registry
-    # -----------------------------
     - name: Login to ACR
       run: |
         echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_LOGIN_SERVER \
@@ -31,41 +35,40 @@ jobs:
 
 
     # -----------------------------
-    # Build Backend Docker Image
+    # BUILD BACKEND (server)
     # -----------------------------
-    - name: Build Backend
+    - name: Build Backend Docker Image
       run: |
-        cd backend
+        cd server
         npm install
         npx prisma generate
-        docker build -t $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest .
+        docker build -t $ACR_LOGIN_SERVER/backend:latest .
 
 
     - name: Push Backend Image
       run: |
-        docker push $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
+        docker push $ACR_LOGIN_SERVER/backend:latest
 
 
     # -----------------------------
-    # Build Frontend Docker Image
+    # BUILD FRONTEND (Next.js)
     # -----------------------------
-    - name: Build Frontend
+    - name: Build Frontend Docker Image
       run: |
-        cd frontend
         npm install
         npm run build
-        docker build -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest .
+        docker build -t $ACR_LOGIN_SERVER/frontend:latest .
 
 
     - name: Push Frontend Image
       run: |
-        docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
+        docker push $ACR_LOGIN_SERVER/frontend:latest
 
 
     # -----------------------------
-    # Deploy Backend VM
+    # DEPLOY BACKEND VM
     # -----------------------------
-    - name: Deploy Backend to VM
+    - name: Deploy Backend VM
       uses: appleboy/ssh-action@v0.1.6
       with:
         host: ${{ secrets.BACKEND_VM_IP }}
@@ -89,9 +92,9 @@ jobs:
 
 
     # -----------------------------
-    # Deploy Frontend VM
+    # DEPLOY FRONTEND VM
     # -----------------------------
-    - name: Deploy Frontend to VM
+    - name: Deploy Frontend VM
       uses: appleboy/ssh-action@v0.1.6
       with:
         host: ${{ secrets.FRONTEND_VM_IP }}
