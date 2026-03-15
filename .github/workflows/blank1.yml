@@ -1,4 +1,4 @@
-name: CI/CD Docker to VMs
+name: Build Push Deploy
 
 on:
   push:
@@ -6,62 +6,85 @@ on:
       - main
 
 jobs:
-  deploy-to-vms:
+  deploy:
     runs-on: ubuntu-latest
+
     env:
       ACR_LOGIN_SERVER: electronicsecommerce.azurecr.io
-      FRONTEND_IMAGE: frontend
-      BACKEND_IMAGE: backend
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+    
+    - name: Checkout Repository
+      uses: actions/checkout@v3
 
-      # 1️⃣ Build & push backend
-      - name: Build & Push Backend Docker Image
-        run: |
-          cd backend
-          npm install
-          npx prisma generate
-          npx prisma db push
-          docker build -t $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest .
-          docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
-          docker push $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
+    - name: Show Repo Files
+      run: |
+        pwd
+        ls -la
 
-      # 2️⃣ Build & push frontend
-      - name: Build & Push Frontend Docker Image
-        run: |
-          cd frontend
-          npm install
-          npm run build
-          docker build -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest .
-          docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
-          docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
+    # Login Docker
+    - name: Login to Azure Container Registry
+      run: |
+        docker login $ACR_LOGIN_SERVER \
+        -u ${{ secrets.ACR_USERNAME }} \
+        -p ${{ secrets.ACR_PASSWORD }}
 
-      # 3️⃣ Deploy backend to backend VM
-      - name: Deploy Backend VM
-        uses: appleboy/ssh-action@v0.1.6
-        with:
-          host: ${{ secrets.BACKEND_VM_IP }}
-          username: ${{ secrets.VM_USERNAME }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
-            docker pull $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
-            docker stop backend || true
-            docker rm backend || true
-            docker run -d --name backend -p 3000:3000 --restart unless-stopped $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
+    # ------------------------
+    # Build Backend
+    # ------------------------
+    - name: Build Backend Image
+      run: |
+        cd backend-api || cd backend || echo "Backend folder not found"
+        npm install
+        npx prisma generate
+        docker build -t $ACR_LOGIN_SERVER/backend:latest .
 
-      # 4️⃣ Deploy frontend to frontend VM
-      - name: Deploy Frontend VM
-        uses: appleboy/ssh-action@v0.1.6
-        with:
-          host: ${{ secrets.FRONTEND_VM_IP }}
-          username: ${{ secrets.VM_USERNAME }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
-            docker pull $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
-            docker stop frontend || true
-            docker rm frontend || true
-            docker run -d --name frontend -p 80:80 --restart unless-stopped $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
+    - name: Push Backend Image
+      run: |
+        docker push $ACR_LOGIN_SERVER/backend:latest
+
+    # ------------------------
+    # Build Frontend
+    # ------------------------
+    - name: Build Frontend Image
+      run: |
+        cd frontend || echo "Frontend folder not found"
+        npm install
+        npm run build
+        docker build -t $ACR_LOGIN_SERVER/frontend:latest .
+
+    - name: Push Frontend Image
+      run: |
+        docker push $ACR_LOGIN_SERVER/frontend:latest
+
+    # ------------------------
+    # Deploy Backend VM
+    # ------------------------
+    - name: Deploy Backend
+      uses: appleboy/ssh-action@v0.1.6
+      with:
+        host: ${{ secrets.BACKEND_VM_IP }}
+        username: ${{ secrets.VM_USERNAME }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        script: |
+          docker login electronicsecommerce.azurecr.io -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+          docker pull electronicsecommerce.azurecr.io/backend:latest
+          docker stop backend || true
+          docker rm backend || true
+          docker run -d -p 3000:3000 --name backend electronicsecommerce.azurecr.io/backend:latest
+
+    # ------------------------
+    # Deploy Frontend VM
+    # ------------------------
+    - name: Deploy Frontend
+      uses: appleboy/ssh-action@v0.1.6
+      with:
+        host: ${{ secrets.FRONTEND_VM_IP }}
+        username: ${{ secrets.VM_USERNAME }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        script: |
+          docker login electronicsecommerce.azurecr.io -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+          docker pull electronicsecommerce.azurecr.io/frontend:latest
+          docker stop frontend || true
+          docker rm frontend || true
+          docker run -d -p 80:3000 --name frontend electronicsecommerce.azurecr.io/frontend:latest
