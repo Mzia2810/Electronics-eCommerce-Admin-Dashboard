@@ -1,5 +1,4 @@
 import { NextAuthOptions } from "next-auth";
-import { Account, User as AuthUser } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import prisma from "@/utils/db";
@@ -8,19 +7,22 @@ import { nanoid } from "nanoid";
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
-      id: "credentials",
       name: "Credentials",
       credentials: {
         email: { label: "Email", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials: any) {
+      async authorize(credentials) {
+        if (!credentials) return null;
+
+        // Find user by email
         const user = await prisma.user.findFirst({
           where: { email: credentials.email },
         });
 
         if (!user) return null;
 
+        // Validate password
         const isPasswordCorrect = await bcrypt.compare(
           credentials.password,
           user.password!
@@ -28,6 +30,7 @@ export const authOptions: NextAuthOptions = {
 
         if (!isPasswordCorrect) return null;
 
+        // Return user object
         return {
           id: user.id,
           email: user.email,
@@ -35,12 +38,17 @@ export const authOptions: NextAuthOptions = {
         };
       },
     }),
+    // Add OAuth providers here if needed:
+    // GoogleProvider({ clientId, clientSecret })
+    // GithubProvider({ clientId, clientSecret })
   ],
 
   callbacks: {
-    async signIn({ user, account }: { user: AuthUser; account: Account }) {
+    async signIn({ user, account }) {
+      // Credentials login
       if (account?.provider === "credentials") return true;
 
+      // OAuth login
       if (account?.provider === "github" || account?.provider === "google") {
         const existingUser = await prisma.user.findFirst({
           where: { email: user.email! },
@@ -52,7 +60,7 @@ export const authOptions: NextAuthOptions = {
               id: nanoid(),
               email: user.email!,
               role: "user",
-              password: null,
+              password: null, // OAuth users don't need a password
             },
           });
         }
@@ -65,26 +73,15 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = user.role;
         token.id = user.id;
-        token.iat = Math.floor(Date.now() / 1000);
       }
-
-      const now = Math.floor(Date.now() / 1000);
-      const tokenAge = now - (token.iat as number);
-      const maxAge = 15 * 60;
-
-      if (tokenAge > maxAge) {
-        return {};
-      }
-
       return token;
     },
 
     async session({ session, token }) {
-      if (token) {
-        session.user.role = token.role as string;
+      if (token && session.user) {
         session.user.id = token.id as string;
+        session.user.role = token.role as string;
       }
-
       return session;
     },
   },
@@ -96,12 +93,11 @@ export const authOptions: NextAuthOptions = {
 
   session: {
     strategy: "jwt",
-    maxAge: 15 * 60,
-    updateAge: 5 * 60,
+    maxAge: 15 * 60, // 15 minutes
   },
 
   jwt: {
-    maxAge: 15 * 60,
+    maxAge: 15 * 60, // 15 minutes
   },
 
   secret: process.env.NEXTAUTH_SECRET,
