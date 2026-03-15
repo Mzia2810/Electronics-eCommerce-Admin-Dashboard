@@ -1,36 +1,67 @@
-# This is a basic workflow to help you get started with Actions
+name: CI/CD Docker to VMs
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches:
+      - main
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
-
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
+  deploy-to-vms:
     runs-on: ubuntu-latest
+    env:
+      ACR_LOGIN_SERVER: electronicsecommerce.azurecr.io
+      FRONTEND_IMAGE: frontend
+      BACKEND_IMAGE: backend
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      # 1️⃣ Build & push backend
+      - name: Build & Push Backend Docker Image
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          cd backend
+          npm install
+          npx prisma generate
+          npx prisma db push
+          docker build -t $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest .
+          docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+          docker push $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
+
+      # 2️⃣ Build & push frontend
+      - name: Build & Push Frontend Docker Image
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          docker build -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest .
+          docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+          docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
+
+      # 3️⃣ Deploy backend to backend VM
+      - name: Deploy Backend VM
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.BACKEND_VM_IP }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+            docker pull $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
+            docker stop backend || true
+            docker rm backend || true
+            docker run -d --name backend -p 3000:3000 --restart unless-stopped $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
+
+      # 4️⃣ Deploy frontend to frontend VM
+      - name: Deploy Frontend VM
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.FRONTEND_VM_IP }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            docker login $ACR_LOGIN_SERVER -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+            docker pull $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
+            docker stop frontend || true
+            docker rm frontend || true
+            docker run -d --name frontend -p 80:80 --restart unless-stopped $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
