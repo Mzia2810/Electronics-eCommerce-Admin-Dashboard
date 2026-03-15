@@ -7,18 +7,19 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { NotificationType } from '@/types/notification';
 import NotificationCard from '@/components/NotificationCard';
 import { useNotificationStore } from '@/app/_zustand/notificationStore';
-import { 
-  FaSearch, 
-  FaFilter, 
-  FaCheckCircle, 
-  FaTrash, 
+import {
+  FaSearch,
+  FaFilter,
+  FaCheckCircle,
+  FaTrash,
   FaSpinner,
-  FaBell 
+  FaBell
 } from 'react-icons/fa';
 
-const NotificationsPage = () => {
+const NotificationsPage: React.FC = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
+
   const {
     notifications,
     total,
@@ -39,7 +40,7 @@ const NotificationsPage = () => {
 
   const { toggleSelection, selectAll, clearSelection } = useNotificationStore();
 
-  const [searchTerm, setSearchTerm] = useState(filters.search || '');
+  const [searchTerm, setSearchTerm] = useState<string>(filters.search || '');
   const [selectedType, setSelectedType] = useState<string>(filters.type || 'all');
   const [selectedStatus, setSelectedStatus] = useState<string>(
     filters.isRead === undefined ? 'all' : filters.isRead ? 'read' : 'unread'
@@ -48,13 +49,10 @@ const NotificationsPage = () => {
   // Redirect if not authenticated
   useEffect(() => {
     if (status === 'loading') return;
-    if (!session) {
-      router.push('/login');
-      return;
-    }
+    if (!session) router.push('/login');
   }, [session, status, router]);
 
-  // Sync local state with store filters
+  // Sync filters to local state
   useEffect(() => {
     setSearchTerm(filters.search || '');
     setSelectedType(filters.type || 'all');
@@ -65,31 +63,30 @@ const NotificationsPage = () => {
 
   // Initial fetch
   useEffect(() => {
-    if (session) {
-      fetchNotifications();
-    }
+    if (session) fetchNotifications();
   }, [session, fetchNotifications]);
 
-  // Handle search
+  // Search handler
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    updateFilters({ 
+    updateFilters({
       ...filters,
       search: searchTerm || undefined,
       page: 1
     });
   };
 
-  // Handle filter changes
+  // Type filter
   const handleTypeFilter = (type: string) => {
     setSelectedType(type);
     updateFilters({
       ...filters,
-      type: type === 'all' ? undefined : type as NotificationType,
+      type: type === 'all' ? undefined : (type as NotificationType),
       page: 1
     });
   };
 
+  // Status filter
   const handleStatusFilter = (status: string) => {
     setSelectedStatus(status);
     updateFilters({
@@ -99,29 +96,28 @@ const NotificationsPage = () => {
     });
   };
 
-  // Handle bulk actions
+  // Bulk actions
   const handleBulkMarkAsRead = async () => {
-    if (selectedIds.length > 0) {
-      await markSelectedAsRead();
-    }
+    if (selectedIds.length > 0) await markSelectedAsRead();
   };
 
   const handleBulkDelete = async () => {
-    if (selectedIds.length > 0 && confirm(`Are you sure you want to delete ${selectedIds.length} notification(s)?`)) {
+    if (
+      selectedIds.length > 0 &&
+      confirm(`Are you sure you want to delete ${selectedIds.length} notification(s)?`)
+    ) {
       await deleteSelectedNotifications();
     }
   };
 
+  // Select all
   const handleSelectAll = () => {
-    if (selectedIds.length === notifications.length) {
-      clearSelection();
-    } else {
-      selectAll();
-    }
+    if (selectedIds.length === notifications.length) clearSelection();
+    else selectAll();
   };
 
   // Loading state
-  if (status === 'loading') {
+  if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <FaSpinner className="animate-spin text-4xl text-blue-500" />
@@ -129,10 +125,7 @@ const NotificationsPage = () => {
     );
   }
 
-  // Not authenticated
-  if (!session) {
-    return null;
-  }
+  if (!session) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -143,45 +136,40 @@ const NotificationsPage = () => {
             <FaBell className="text-2xl text-blue-600" />
             <h1 className="text-3xl font-bold text-gray-900">Notification Center</h1>
           </div>
-          <p className="text-gray-600">
-            Manage and view all your notifications in one place
-          </p>
+          <p className="text-gray-600">Manage and view all your notifications in one place</p>
         </div>
 
-        {/* Filters and Search */}
+        {/* Filters */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          {/* Search Bar */}
           <form onSubmit={handleSearch} className="mb-4">
             <div className="relative">
-              <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search notifications..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full pl-10 pr-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
               />
               <button
                 type="submit"
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1 bg-blue-600 text-white text-sm rounded"
               >
                 Search
               </button>
             </div>
           </form>
 
-          {/* Filters */}
           <div className="flex flex-wrap gap-4 items-center">
             <div className="flex items-center space-x-2">
               <FaFilter className="text-gray-400" />
               <span className="text-sm font-medium text-gray-700">Filters:</span>
             </div>
 
-            {/* Type Filter */}
             <select
               value={selectedType}
               onChange={(e) => handleTypeFilter(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="px-3 py-1 border rounded-md text-sm"
             >
               <option value="all">All Types</option>
               <option value={NotificationType.ORDER_UPDATE}>Order Updates</option>
@@ -190,34 +178,32 @@ const NotificationsPage = () => {
               <option value={NotificationType.SYSTEM_ALERT}>System Alerts</option>
             </select>
 
-            {/* Status Filter */}
             <select
               value={selectedStatus}
               onChange={(e) => handleStatusFilter(e.target.value)}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="px-3 py-1 border rounded-md text-sm"
             >
               <option value="all">All Status</option>
               <option value="unread">Unread</option>
               <option value="read">Read</option>
             </select>
 
-            {/* Clear Filters */}
             <button
               onClick={() => {
                 setSearchTerm('');
                 setSelectedType('all');
                 setSelectedStatus('all');
-                updateFilters({ 
-                  type: undefined, 
-                  isRead: undefined, 
-                  search: undefined, 
+                updateFilters({
+                  type: undefined,
+                  isRead: undefined,
+                  search: undefined,
                   page: 1,
                   limit: 10,
                   sortBy: 'createdAt',
                   sortOrder: 'desc'
                 });
               }}
-              className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800 underline"
+              className="text-sm underline"
             >
               Clear Filters
             </button>
@@ -226,44 +212,36 @@ const NotificationsPage = () => {
 
         {/* Bulk Actions */}
         {selectedIds.length > 0 && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-blue-700">
-                {selectedIds.length} notification(s) selected
-              </span>
-              <div className="flex space-x-3">
-                <button
-                  onClick={handleBulkMarkAsRead}
-                  className="inline-flex items-center px-3 py-1 text-sm font-medium text-blue-600 bg-white border border-blue-300 rounded-md hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                >
-                  <FaCheckCircle className="w-4 h-4 mr-1" />
-                  Mark as Read
-                </button>
-                <button
-                  onClick={handleBulkDelete}
-                  className="inline-flex items-center px-3 py-1 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-md hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-1"
-                >
-                  <FaTrash className="w-4 h-4 mr-1" />
-                  Delete
-                </button>
-              </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6 flex justify-between items-center">
+            <span className="text-sm text-blue-700">{selectedIds.length} selected</span>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleBulkMarkAsRead}
+                className="inline-flex items-center px-3 py-1 text-sm font-medium text-blue-600 bg-white border border-blue-300 rounded-md hover:bg-blue-50"
+              >
+                <FaCheckCircle className="w-4 h-4 mr-1" /> Mark as Read
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="inline-flex items-center px-3 py-1 text-sm font-medium text-red-600 bg-white border border-red-300 rounded-md hover:bg-red-50"
+              >
+                <FaTrash className="w-4 h-4 mr-1" /> Delete
+              </button>
             </div>
           </div>
         )}
 
-        {/* Select All Checkbox */}
+        {/* Select All */}
         {notifications.length > 0 && (
-          <div className="mb-4">
-            <label className="flex items-center space-x-2 text-sm text-gray-600">
-              <input
-                type="checkbox"
-                checked={selectedIds.length === notifications.length && notifications.length > 0}
-                onChange={handleSelectAll}
-                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-              />
-              <span>Select all notifications</span>
-            </label>
-          </div>
+          <label className="flex items-center space-x-2 mb-4 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={selectedIds.length === notifications.length && notifications.length > 0}
+              onChange={handleSelectAll}
+              className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+            />
+            <span>Select all notifications</span>
+          </label>
         )}
 
         {/* Notifications List */}
@@ -274,17 +252,12 @@ const NotificationsPage = () => {
               <p className="text-gray-500">Loading notifications...</p>
             </div>
           ) : error ? (
-            <div className="text-center py-12">
-              <div className="text-red-500 mb-4">
-                <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <p className="text-red-600 font-medium mb-2">Error loading notifications</p>
-              <p className="text-gray-500 mb-4">{error}</p>
+            <div className="text-center py-12 text-red-600">
+              <p className="mb-4 font-medium">Error loading notifications</p>
+              <p className="mb-4">{error}</p>
               <button
-                onClick={() => fetchNotifications()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                onClick={fetchNotifications}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md"
               >
                 Try Again
               </button>
@@ -294,9 +267,13 @@ const NotificationsPage = () => {
               <FaBell className="w-16 h-16 mx-auto text-gray-300 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No notifications found</h3>
               <p className="text-gray-500">
-                {Object.keys(filters).some(key => filters[key as keyof typeof filters] !== undefined && key !== 'page' && key !== 'limit' && key !== 'sortBy' && key !== 'sortOrder')
-                  ? "Try adjusting your filters to see more notifications."
-                  : "You don't have any notifications yet."}
+                {Object.keys(filters).some(
+                  (key) =>
+                    filters[key as keyof typeof filters] !== undefined &&
+                    !['page', 'limit', 'sortBy', 'sortOrder'].includes(key)
+                )
+                  ? 'Try adjusting your filters to see more notifications.'
+                  : "You don’t have any notifications yet."}
               </p>
             </div>
           ) : (
@@ -316,22 +293,14 @@ const NotificationsPage = () => {
                 />
               ))}
 
-              {/* Load More Button */}
               {page < totalPages && (
                 <div className="text-center pt-6">
                   <button
                     onClick={loadMore}
                     disabled={loading}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {loading ? (
-                      <>
-                        <FaSpinner className="animate-spin inline mr-2" />
-                        Loading...
-                      </>
-                    ) : (
-                      'Load More'
-                    )}
+                    {loading ? 'Loading...' : 'Load More'}
                   </button>
                 </div>
               )}
