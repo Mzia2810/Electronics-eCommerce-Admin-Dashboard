@@ -5,86 +5,110 @@ on:
     branches:
       - main
 
+env:
+  ACR_LOGIN_SERVER: electronicsecommerce.azurecr.io
+  FRONTEND_IMAGE: frontend
+  BACKEND_IMAGE: backend
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:
-      ACR_LOGIN_SERVER: electronicsecommerce.azurecr.io
-
     steps:
-    
-    - name: Checkout Repository
+
+    - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Show Repo Files
-      run: |
-        pwd
-        ls -la
 
-    # Login Docker
-    - name: Login to Azure Container Registry
+    # -----------------------------
+    # Login to Azure Container Registry
+    # -----------------------------
+    - name: Login to ACR
       run: |
-        docker login $ACR_LOGIN_SERVER \
-        -u ${{ secrets.ACR_USERNAME }} \
-        -p ${{ secrets.ACR_PASSWORD }}
+        echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_LOGIN_SERVER \
+        --username ${{ secrets.ACR_USERNAME }} \
+        --password-stdin
 
-    # ------------------------
-    # Build Backend
-    # ------------------------
-    - name: Build Backend Image
+
+    # -----------------------------
+    # Build Backend Docker Image
+    # -----------------------------
+    - name: Build Backend
       run: |
-        cd backend-api || cd backend || echo "Backend folder not found"
+        cd backend
         npm install
         npx prisma generate
-        docker build -t $ACR_LOGIN_SERVER/backend:latest .
+        docker build -t $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest .
+
 
     - name: Push Backend Image
       run: |
-        docker push $ACR_LOGIN_SERVER/backend:latest
+        docker push $ACR_LOGIN_SERVER/$BACKEND_IMAGE:latest
 
-    # ------------------------
-    # Build Frontend
-    # ------------------------
-    - name: Build Frontend Image
+
+    # -----------------------------
+    # Build Frontend Docker Image
+    # -----------------------------
+    - name: Build Frontend
       run: |
-        cd frontend || echo "Frontend folder not found"
+        cd frontend
         npm install
         npm run build
-        docker build -t $ACR_LOGIN_SERVER/frontend:latest .
+        docker build -t $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest .
+
 
     - name: Push Frontend Image
       run: |
-        docker push $ACR_LOGIN_SERVER/frontend:latest
+        docker push $ACR_LOGIN_SERVER/$FRONTEND_IMAGE:latest
 
-    # ------------------------
+
+    # -----------------------------
     # Deploy Backend VM
-    # ------------------------
-    - name: Deploy Backend
+    # -----------------------------
+    - name: Deploy Backend to VM
       uses: appleboy/ssh-action@v0.1.6
       with:
         host: ${{ secrets.BACKEND_VM_IP }}
         username: ${{ secrets.VM_USERNAME }}
         key: ${{ secrets.VM_SSH_KEY }}
         script: |
-          docker login electronicsecommerce.azurecr.io -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+          docker login electronicsecommerce.azurecr.io \
+          -u ${{ secrets.ACR_USERNAME }} \
+          -p ${{ secrets.ACR_PASSWORD }}
+
           docker pull electronicsecommerce.azurecr.io/backend:latest
+
           docker stop backend || true
           docker rm backend || true
-          docker run -d -p 3000:3000 --name backend electronicsecommerce.azurecr.io/backend:latest
 
-    # ------------------------
+          docker run -d \
+          -p 3000:3000 \
+          --name backend \
+          --restart unless-stopped \
+          electronicsecommerce.azurecr.io/backend:latest
+
+
+    # -----------------------------
     # Deploy Frontend VM
-    # ------------------------
-    - name: Deploy Frontend
+    # -----------------------------
+    - name: Deploy Frontend to VM
       uses: appleboy/ssh-action@v0.1.6
       with:
         host: ${{ secrets.FRONTEND_VM_IP }}
         username: ${{ secrets.VM_USERNAME }}
         key: ${{ secrets.VM_SSH_KEY }}
         script: |
-          docker login electronicsecommerce.azurecr.io -u ${{ secrets.ACR_USERNAME }} -p ${{ secrets.ACR_PASSWORD }}
+          docker login electronicsecommerce.azurecr.io \
+          -u ${{ secrets.ACR_USERNAME }} \
+          -p ${{ secrets.ACR_PASSWORD }}
+
           docker pull electronicsecommerce.azurecr.io/frontend:latest
+
           docker stop frontend || true
           docker rm frontend || true
-          docker run -d -p 80:3000 --name frontend electronicsecommerce.azurecr.io/frontend:latest
+
+          docker run -d \
+          -p 80:3000 \
+          --name frontend \
+          --restart unless-stopped \
+          electronicsecommerce.azurecr.io/frontend:latest
