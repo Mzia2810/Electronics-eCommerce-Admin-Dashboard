@@ -1,117 +1,64 @@
-name: Build Push Deploy
+name: Deploy Frontend to Windows IIS via SSH
 
 on:
   push:
-    branches:
-      - main
-
-env:
-  ACR_LOGIN_SERVER: electronicsecommerce.azurecr.io
+    branches: [ main ]
 
 jobs:
-  deploy:
+  deploy-frontend:
     runs-on: ubuntu-latest
 
     steps:
-
-    # Checkout repo
-    - name: Checkout repository
+    - name: Checkout code
       uses: actions/checkout@v3
 
-
-    # Show files (debug step)
-    - name: Show repo structure
-      run: |
-        pwd
-        ls -la
-
-
-    # Login to Azure Container Registry
-    - name: Login to ACR
-      run: |
-        echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_LOGIN_SERVER \
-        --username ${{ secrets.ACR_USERNAME }} \
-        --password-stdin
-
-
-    # -----------------------------
-    # BUILD BACKEND (server)
-    # -----------------------------
-    - name: Build Backend Docker Image
-      run: |
-        cd server
-        npm install
-        npx prisma generate
-        docker build -t $ACR_LOGIN_SERVER/backend:latest .
-
-
-    - name: Push Backend Image
-      run: |
-        docker push $ACR_LOGIN_SERVER/backend:latest
-
-
-    # -----------------------------
-    # BUILD FRONTEND (Next.js)
-    # -----------------------------
-    - name: Build Frontend Docker Image
-      run: |
-        npm install
-        npm run build
-        docker build -t $ACR_LOGIN_SERVER/frontend:latest .
-
-
-    - name: Push Frontend Image
-      run: |
-        docker push $ACR_LOGIN_SERVER/frontend:latest
-
-
-    # -----------------------------
-    # DEPLOY BACKEND VM
-    # -----------------------------
-    - name: Deploy Backend VM
-      uses: appleboy/ssh-action@v0.1.6
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
       with:
-        host: ${{ secrets.BACKEND_VM_IP }}
-        username: ${{ secrets.VM_USERNAME }}
-        key: ${{ secrets.VM_SSH_KEY }}
-        script: |
-          docker login electronicsecommerce.azurecr.io \
-          -u ${{ secrets.ACR_USERNAME }} \
-          -p ${{ secrets.ACR_PASSWORD }}
+        node-version: '18'
 
-          docker pull electronicsecommerce.azurecr.io/backend:latest
+    - name: Install frontend dependencies
+      working-directory: .
+      run: npm install
 
-          docker stop backend || true
-          docker rm backend || true
+    - name: Build Next.js frontend
+      working-directory: .
+      run: npm run build
 
-          docker run -d \
-          -p 3000:3000 \
-          --name backend \
-          --restart unless-stopped \
-          electronicsecommerce.azurecr.io/backend:latest
-
-
-    # -----------------------------
-    # DEPLOY FRONTEND VM
-    # -----------------------------
-    - name: Deploy Frontend VM
-      uses: appleboy/ssh-action@v0.1.6
+    - name: Deploy frontend to VM via SSH
+      uses: appleboy/scp-action@v0.1.5
       with:
         host: ${{ secrets.FRONTEND_VM_IP }}
-        username: ${{ secrets.VM_USERNAME }}
-        key: ${{ secrets.VM_SSH_KEY }}
+        username: ${{ secrets.FRONTEND_VM_USER }}
+        key: ${{ secrets.FRONTEND_VM_KEY }}
+        port: 22
+        source: ".next/**,public/**,package.json,next.config.js"
+        target: ${{ secrets.FRONTEND_IIS_PATH }}
+
+    - name: Restart IIS
+      uses: appleboy/ssh-action@v0.1.7
+      with:
+        host: ${{ secrets.FRONTEND_VM_IP }}
+        username: ${{ secrets.FRONTEND_VM_USER }}
+        key: ${{ secrets.FRONTEND_VM_KEY }}
+        port: 22
         script: |
-          docker login electronicsecommerce.azurecr.io \
-          -u ${{ secrets.ACR_USERNAME }} \
-          -p ${{ secrets.ACR_PASSWORD }}
+          iisreset
+    # ------------------ BACKEND DEPLOY ------------------
+#     - name: Deploy Backend to Private VM via Frontend Jump Host
+#       uses: appleboy/ssh-action@v0.1.7
+#       with:
+#         host: ${{ secrets.FRONTEND_VM_IP }}
+#         username: ${{ secrets.FRONTEND_VM_USERNAME }}
+#         password: ${{ secrets.FRONTEND_VM_PASSWORD }}
+#         script: |
+#           # Copy backend files to backend VM via SSH from frontend VM
+#           sshpass -p '${{ secrets.BACKEND_VM_PASSWORD }}' scp -r ./server ${{ secrets.BACKEND_VM_USERNAME }}@${{ secrets.BACKEND_VM_IP }}:${{ secrets.BACKEND_SERVER_PATH }}
 
-          docker pull electronicsecommerce.azurecr.io/frontend:latest
-
-          docker stop frontend || true
-          docker rm frontend || true
-
-          docker run -d \
-          -p 80:3000 \
-          --name frontend \
-          --restart unless-stopped \
-          electronicsecommerce.azurecr.io/frontend:latest
+#           # Connect to backend VM and restart Node.js backend using PM2
+#           sshpass -p '${{ secrets.BACKEND_VM_PASSWORD }}' ssh ${{ secrets.BACKEND_VM_USERNAME }}@${{ secrets.BACKEND_VM_IP }} << 'EOF'
+#             cd ${{ secrets.BACKEND_SERVER_PATH }}
+#             npm install
+#             pm2 restart backend || pm2 start index.js --name backend
+#             pm2 save
+# EOF
